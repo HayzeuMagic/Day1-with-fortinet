@@ -156,3 +156,11 @@ This guide configures an SSL VPN on a FortiGate 60F so a remote device running F
 In a homelab with no real internet behind wan1, the SSL VPN reaches the LAN only. The client's internet comes from its own connection, not the FortiGate. Full tunnel with no upstream will cut the client's internet.
 
 Split Tunneling mode matters on mobile clients. "Based on Policy Destinations" (with the SSLVPN-to-LAN policy destination set to `LAN-~~`) reliably pushed the correct split route to the phone. "For Trusted Destinations" was configured the same way but did not take effect on the mobile FortiClient, so the phone full-tunneled and lost internet. If internet drops the moment the VPN connects, this mode setting is the first thing to check.
+
+For configuring the Access Point (Interal WiFi):
+
+Go to repo CCNA2 (link)
+Download the whole repo
+Open VSCode
+File -> Open Folder -> Open the downloaded CCNA2 Folder
+
