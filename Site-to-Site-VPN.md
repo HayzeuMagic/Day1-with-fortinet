@@ -1,0 +1,145 @@
+# FortiGate — Site-to-Site IPsec VPN with OSPF over the Tunnel
+
+| | |
+|---|---|
+| Devices | FortiGate 60F / 60E (one at each site) |
+| Firmware | FortiOS 7.0 |
+| Method | Route-based IPsec + OSPF over the tunnel (dynamic routing) |
+| License | Not required |
+
+## Overview
+
+Two sites connect over the WAN through an encrypted IPsec tunnel. Instead of hardcoding remote subnets, the tunnel uses `0.0.0.0/0` selectors and runs OSPF across the tunnel, so every VLAN at both sites is learned automatically — including the PC VLANs behind the switches.
+
+> Replace `~~` with your local site number and `P` with the remote site number. Working example used here: local `61`, remote `62`.
+
+### Address plan (example 61 ↔ 62)
+
+| Item | Local (site ~~ / 61) | Remote (site P / 62) |
+|---|---|---|
+| WAN (wan1) | 200.0.0.~~ / 200.0.0.61 | 200.0.0.P / 200.0.0.62 |
+| FortiGate LAN (internal1) | 10.~~.~~.1 / 10.61.61.1 | 10.P.P.1 / 10.62.62.1 |
+| PC VLAN (behind switch) | 10.~~.1.0/24 / 10.61.1.0/24 | 10.P.1.0/24 / 10.62.1.0/24 |
+| PC gateway (switch SVI) | 10.~~.1.4 / 10.61.1.4 | 10.P.1.4 / 10.62.1.4 |
+| Tunnel transit /30 | 10.255.255.1 | 10.255.255.2 |
+
+## Why this design (and why /24 selectors fail)
+
+The PCs are **not** on the FortiGate LAN subnet — they live on the VLAN-1 subnet (`10.~~.1.0/24`) behind the core switch. A tunnel with `/24` selectors that only cover `10.~~.~~.0/24` will come Up but PCs still can't ping, because their subnet isn't inside the tunnel. Using `0.0.0.0/0` selectors + OSPF avoids this: OSPF advertises all VLANs across the tunnel.
+
+---
+
+## Phase 1 — Custom IPsec tunnel
+
+`VPN > IPsec Tunnels > Create New` → Template Type: **Custom**
+
+- Name: `VPN-to-P`
+- Network > Remote Gateway: Static IP `200.0.0.P`
+- **Interface: `wan1`**  ← the tunnel egresses the WAN. NOT internal1.
+- Authentication: Pre-shared Key (identical both sides), IKE Version 2
+- Phase 2 Selectors: Local `0.0.0.0/0`, Remote `0.0.0.0/0`
+
+> Gotcha #1: the Phase 1 **outgoing interface must be `wan1`**. If it is set to `internal1`, the tunnel will not pass traffic — `get vpn ipsec tunnel summary` shows `selectors(total,up): 1/0` and 0 packets. Fix: `config vpn ipsec phase1-interface / edit "<name>" / set interface "wan1"`.
+
+## Phase 2 — Tunnel interface IP
+
+`Network > Interfaces` → expand `wan1` → edit the tunnel interface:
+
+- IP: `10.255.255.1` (remote side uses `10.255.255.2`)
+- Remote IP/Netmask: `10.255.255.2/32`
+- Administrative Access: PING
+
+## Phase 3 — Firewall policies (both directions)
+
+`Policy & Objects > Firewall Policy` — create **two**:
+
+| Policy | Incoming | Outgoing | Src | Dst | NAT |
+|---|---|---|---|---|---|
+| to-peer | **internal1** | tunnel | all | all | OFF |
+| from-peer | tunnel | **internal1** | all | all | OFF |
+
+> Gotcha #2: the outbound (`to-peer`) policy's **incoming interface must be `internal1`**, not `wan1`. LAN/switch traffic enters on internal1. If it is set to `wan1`, the FortiGate itself can still ping the peer (self-originated traffic bypasses policy) but **transit traffic from your PCs/switch is dropped**. Symptom: `execute ping` from the FortiGate works, but a ping from the switch or a PC fails. Fix: `config firewall policy / edit <id> / set srcintf "internal1"`.
+
+## Phase 4 — OSPF over the tunnel
+
+`Network > OSPF` (or CLI). Add the tunnel as a point-to-point OSPF interface and include the transit link.
+
+```
+config router ospf
+  config ospf-interface
+    edit "tunnel-ospf"
+      set interface "VPN-to-P"
+      set network-type point-to-point
+    next
+  end
+  config network
+    edit 4
+      set prefix 10.255.255.0 255.255.255.252
+      set area 0.0.0.0
+    next
+  end
+end
+```
+
+Don't add the LAN VLANs here — they already flood in from the core switch via OSPF and cross to the other site automatically once the adjacency is Full. Verify: `get router info ospf neighbor` should show the peer via `10.255.255.x` on the tunnel interface, state **Full**.
+
+## Phase 5 — Make the tunnel preferred over the WAN
+
+> Gotcha #3 (the subtle one): if all sites also run OSPF over the shared WAN (`200.0.0.0/24`), each site learns the other's LANs over **both** the tunnel and the WAN. OSPF often prefers the WAN path (lower cost), so LAN-to-LAN traffic goes out `wan1` and gets dropped (there is no WAN→LAN policy). Symptom: FortiGate-to-FortiGate pings work, but PC-to-PC does not; `get router info routing-table details <remote-LAN>` shows the route `via wan1` instead of the tunnel.
+
+Fix: give the tunnel a low OSPF cost and `wan1` a high one, on **both** FortiGates:
+
+```
+config router ospf
+  config ospf-interface
+    edit "tunnel-ospf"          ; the tunnel OSPF interface
+      set cost 10
+    next
+    edit "wan1"
+      set interface "wan1"
+      set cost 100
+    next
+  end
+end
+```
+
+After this, `get router info routing-table details 10.P.1.4` should show the remote LAN **via the tunnel**, not wan1.
+
+---
+
+## Remote site
+
+Mirror everything on the remote FortiGate: Phase 1 remote-gw `200.0.0.~~` on `wan1`, tunnel IP `10.255.255.2` / remote `10.255.255.1`, the two firewall policies (incoming `internal1` on the outbound one), OSPF on the tunnel, same pre-shared key, and the same Phase 5 cost change.
+
+## PC requirements (easy to forget)
+
+- Each PC's **default gateway** must be its local switch SVI (`10.~~.1.4` on your side, `10.P.1.4` on the remote). A PC with no gateway can't reply across the tunnel.
+- Windows Firewall blocks ping from other subnets by default — allow ICMP (or disable the firewall to test) on the target PC.
+
+## Verification (bottom-up)
+
+Run these in order; the first failure tells you the layer:
+
+1. `execute ping 10.255.255.2` — tunnel transit link is up.
+2. `get vpn ipsec tunnel summary` — `selectors(total,up): 1/1`, packets flowing.
+3. `get router info ospf neighbor` — peer via the tunnel, state Full.
+4. `get router info routing-table details 10.P.1.4` — remote LAN via the **tunnel**.
+5. From the FortiGate: `execute ping-options source 10.~~.~~.1` then `execute ping 10.P.P.1` — FortiGate-to-FortiGate.
+6. From a PC: `ping 10.P.1.x` — the real PC-to-PC test.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Tunnel stays Down / `selectors up: 0`, 0 packets | Phase 1 outgoing interface set to `internal1` | Set it to `wan1` |
+| Tunnel Down | Pre-shared key or IKE version mismatch | Re-enter identical key / IKE v2 both sides |
+| FortiGate can ping peer, but PC/switch cannot | Outbound firewall policy incoming-interface is `wan1` | Set the `to-peer` policy `srcintf` to `internal1` |
+| No OSPF neighbor over the tunnel | Tunnel not up, or tunnel not added to OSPF as point-to-point on one side | Bring tunnel up; add point-to-point OSPF interface both sides |
+| FortiGate-to-FortiGate works, PC-to-PC fails; remote LAN routes `via wan1` | WAN OSPF preferred over the tunnel | Phase 5 cost change on both units (tunnel 10, wan1 100) |
+| PC reaches remote FortiGate but not the remote PC | Remote PC has no gateway or blocks ICMP | Set PC gateway to `10.P.1.4`, allow ICMP |
+
+## Notes
+
+- Phase 2 selectors with no `src-subnet`/`dst-subnet` default to `0.0.0.0/0` — the encryption domain is wide open, so routing (not selectors) decides what crosses.
+- `execute ping` from the FortiGate is self-originated (local-out) and skips firewall policy — it is not a valid test of transit traffic. Always confirm with a ping from a PC or the switch.
+- Serial console at 9600 baud can garble fast multi-line paste; enter config one line at a time and verify the prompt changes (e.g. `(ospf)`).
