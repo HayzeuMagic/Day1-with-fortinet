@@ -43,6 +43,8 @@ This guide configures an SSL VPN on a FortiGate 60F so a remote device running F
 5. Click through the remaining screens and Submit.
 
 *Screenshot: User Definition > new local user.*
+<img width="1440" height="900" alt="UC1" src="https://github.com/user-attachments/assets/6dfc12f0-f529-47d7-9108-03d66818e235" />
+
 
 ### Step 2 — Create a user group
 
