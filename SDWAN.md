@@ -73,11 +73,21 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 9. Repeat the process for `wan2`, using Alias `DITO`, DHCP addressing, and Distance `10`.
 10. Confirm both interfaces are up and have received an address and gateway.
 
+
 <!-- Paste screenshot here: Step 1a — wan1/PLDT configured for DHCP with distance 10 -->
+
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 2 58 36 PM" src="https://github.com/user-attachments/assets/14cf3ede-4f52-4f89-aaaf-a3d88500da66" />
+
 
 <!-- Paste screenshot here: Step 1b — wan2/DITO configured for DHCP with distance 10 -->
 
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 2 57 25 PM" src="https://github.com/user-attachments/assets/56163d38-45ae-4f88-b338-5663bdca7862" />
+
+
 <!-- Paste screenshot here: Step 1c — Interface list showing wan1 and wan2 up -->
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 2 59 05 PM" src="https://github.com/user-attachments/assets/c0683255-00cb-45b8-9785-14caf95d8853" />
 
 > DHCP interfaces normally install routes with a distance of 5. Using distance 10 on both WAN interfaces keeps the two links consistent with the SD-WAN default route.
 
@@ -96,8 +106,11 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 11. Click OK.
 
 <!-- Paste screenshot here: Step 2a — internal interface set to 10.28.0.1/24 -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 00 09 PM" src="https://github.com/user-attachments/assets/f5452f3d-7a09-4197-99c7-f42a2c6d7bb0" />
 
 <!-- Paste screenshot here: Step 2b — internal DHCP pool set to 10.28.0.100–10.28.0.200 -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 00 25 PM" src="https://github.com/user-attachments/assets/9181e86d-5c6d-45e2-b312-b0d52698dda0" />
+
 
 > The physical LAN ports are members of the `internal` hardware switch and share one broadcast domain. The router is physically connected to LAN2/internal2, but policies use the logical `internal` interface.
 >
@@ -128,6 +141,9 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 <!-- Paste screenshot here: Step 3b — Create SD-WAN member for wan2/DITO -->
 
 <!-- Paste screenshot here: Step 3c — virtual-wan-link containing both SD-WAN members -->
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 02 02 PM" src="https://github.com/user-attachments/assets/65e308df-03db-4482-a473-b93eae110e71" />
+
 
 > An interface must be removed from other configuration references before FortiGate will offer it as an SD-WAN member. In this lab, `wan1` was referenced by the existing outbound firewall policy. `wan2` was added first, the policy's outgoing interface was changed from `wan1` to `virtual-wan-link`, and then `wan1` became available to add.
 
@@ -164,6 +180,7 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 <!-- Paste screenshot here: Step 4b — SLA target thresholds -->
 
 <!-- Paste screenshot here: Step 4c — Both Performance SLA participants alive -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 03 17 PM" src="https://github.com/user-attachments/assets/415863a9-2541-493c-98f9-639de5712c5e" />
 
 > `Internet_Health` is the Performance SLA name and is also selected as the Required SLA Target in the SD-WAN rule. There is no separate built-in object named `Internet_SLA`.
 
@@ -188,7 +205,14 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 
 <!-- Paste screenshot here: Step 5a — Internet_Load_Balance rule settings -->
 
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 03 50 PM" src="https://github.com/user-attachments/assets/0aaa7a8a-fa2e-40e2-a191-a62b8f6ce26c" />
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 04 02 PM" src="https://github.com/user-attachments/assets/4e5d8201-2bf0-4b94-b262-c7f5f96df131" />
+
 <!-- Paste screenshot here: Step 5b — Rule list showing Internet_Load_Balance above the implicit rule -->
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 04 23 PM" src="https://github.com/user-attachments/assets/7810ae63-3872-4291-b4a1-ca81b1fc192d" />
+
 
 > FortiOS 7.0.15 uses round-robin for Maximize Bandwidth rules created in the GUI. This distributes new sessions across both healthy links. Avoid source-IP-only balancing in this topology because every downstream client is NATed behind the router's single WAN address, `10.28.0.13`.
 
@@ -204,6 +228,7 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 8. Enable the route and click OK.
 
 <!-- Paste screenshot here: Step 6 — Default route through virtual-wan-link -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 04 43 PM" src="https://github.com/user-attachments/assets/3b153023-9f5f-4c43-bbce-ffcb9c7027cd" />
 
 > Do not add separate manually configured default routes for `wan1` and `wan2`. SD-WAN selects the healthy member for the default route.
 
@@ -231,8 +256,15 @@ FortiGate LAN2/internal2 <── internal 10.28.0.1/24 ──┘
 5. Avoid creating a duplicate policy if the existing outbound policy already has these values.
 
 <!-- Paste screenshot here: Step 7a — Internal_to_SD-WAN firewall policy settings -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 08 36 PM" src="https://github.com/user-attachments/assets/8e7db0e9-2c3f-4a3b-9017-0bfee1534f4e" />
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 08 52 PM" src="https://github.com/user-attachments/assets/42319c19-fd88-4ce4-968c-6c89cd7acd02" />
+
 
 <!-- Paste screenshot here: Step 7b — Firewall policy list showing the enabled SD-WAN policy -->
+
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 09 19 PM" src="https://github.com/user-attachments/assets/64157594-2477-4c73-b7d9-57b445d335e8" />
+
 
 ### Step 8 — Connect the downstream router
 
@@ -289,6 +321,7 @@ Confirm:
 <!-- Paste screenshot here: Verification — SD-WAN monitor showing both members healthy and carrying sessions -->
 
 <!-- Paste screenshot here: Verification — Routing table or CLI health-check output -->
+<img width="1436" height="781" alt="Screenshot 2026-07-22 at 3 10 11 PM" src="https://github.com/user-attachments/assets/6e7d2711-937c-4638-ad4b-b315d5a85c4e" />
 
 ### Test failover
 
