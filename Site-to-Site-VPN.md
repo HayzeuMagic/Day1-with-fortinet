@@ -11,7 +11,7 @@
 
 Two sites connect over the WAN through an encrypted IPsec tunnel. Instead of hardcoding remote subnets, the tunnel uses `0.0.0.0/0` selectors and runs OSPF across the tunnel, so every VLAN at both sites is learned automatically — including the PC VLANs behind the switches.
 
-> Replace `~~` with your local site number and `P` with the remote site number. Working example used here: local `61`, remote `62`.
+> Replace `~~` with the local student's monitor number and `P` with the remote student's monitor number. Working example: local monitor `61`, remote monitor `62`.
 
 ### Address plan (example 61 ↔ 62)
 
@@ -19,13 +19,14 @@ Two sites connect over the WAN through an encrypted IPsec tunnel. Instead of har
 |---|---|---|
 | WAN (wan1) | 200.0.0.~~ / 200.0.0.61 | 200.0.0.P / 200.0.0.62 |
 | FortiGate LAN (internal1) | 10.~~.~~.1 / 10.61.61.1 | 10.P.P.1 / 10.62.62.1 |
-| PC VLAN (behind switch) | 10.~~.1.0/24 / 10.61.1.0/24 | 10.P.1.0/24 / 10.62.1.0/24 |
-| PC gateway (switch SVI) | 10.~~.1.4 / 10.61.1.4 | 10.P.1.4 / 10.62.1.4 |
+| PC VLAN (behind switch) | 10.~~.10.0/24 / 10.61.10.0/24 | 10.P.10.0/24 / 10.62.10.0/24 |
+| PC address | 10.~~.10.10 / 10.61.10.10 | 10.P.10.10 / 10.62.10.10 |
+| PC gateway (switch SVI) | 10.~~.10.4 / 10.61.10.4 | 10.P.10.4 / 10.62.10.4 |
 | Tunnel transit /30 | 10.255.255.1 | 10.255.255.2 |
 
 ## Why this design (and why /24 selectors fail)
 
-The PCs are **not** on the FortiGate LAN subnet — they live on the VLAN-1 subnet (`10.~~.1.0/24`) behind the core switch. A tunnel with `/24` selectors that only cover `10.~~.~~.0/24` will come Up but PCs still can't ping, because their subnet isn't inside the tunnel. Using `0.0.0.0/0` selectors + OSPF avoids this: OSPF advertises all VLANs across the tunnel.
+The PCs are **not** on the FortiGate LAN subnet — they live on VLAN 10 (`10.~~.10.0/24`) behind the core switch. A tunnel with `/24` selectors that only cover `10.~~.~~.0/24` will come Up but PCs still can't ping, because their subnet isn't inside the tunnel. Using `0.0.0.0/0` selectors + OSPF avoids this: OSPF advertises all VLANs across the tunnel.
 
 ---
 
@@ -103,7 +104,7 @@ config router ospf
 end
 ```
 
-After this, `get router info routing-table details 10.P.1.4` should show the remote LAN **via the tunnel**, not wan1.
+After this, `get router info routing-table details 10.P.10.10` should show the remote PC network **via the tunnel**, not wan1.
 
 ---
 
@@ -113,7 +114,7 @@ Mirror everything on the remote FortiGate: Phase 1 remote-gw `200.0.0.~~` on `wa
 
 ## PC requirements (easy to forget)
 
-- Each PC's **default gateway** must be its local switch SVI (`10.~~.1.4` on your side, `10.P.1.4` on the remote). A PC with no gateway can't reply across the tunnel.
+- Each PC uses address `10.~~.10.10/24` locally or `10.P.10.10/24` remotely. Its **default gateway** must be the local switch SVI (`10.~~.10.4` or `10.P.10.4`). A PC with no gateway cannot reply across the tunnel.
 - Windows Firewall blocks ping from other subnets by default — allow ICMP (or disable the firewall to test) on the target PC.
 
 ## Verification (bottom-up)
@@ -123,9 +124,9 @@ Run these in order; the first failure tells you the layer:
 1. `execute ping 10.255.255.2` — tunnel transit link is up.
 2. `get vpn ipsec tunnel summary` — `selectors(total,up): 1/1`, packets flowing.
 3. `get router info ospf neighbor` — peer via the tunnel, state Full.
-4. `get router info routing-table details 10.P.1.4` — remote LAN via the **tunnel**.
+4. `get router info routing-table details 10.P.10.10` — remote PC network via the **tunnel**.
 5. From the FortiGate: `execute ping-options source 10.~~.~~.1` then `execute ping 10.P.P.1` — FortiGate-to-FortiGate.
-6. From a PC: `ping 10.P.1.x` — the real PC-to-PC test.
+6. From the local PC: `ping 10.P.10.10` — the real PC-to-PC test.
 
 ## Troubleshooting
 
@@ -136,7 +137,7 @@ Run these in order; the first failure tells you the layer:
 | FortiGate can ping peer, but PC/switch cannot | Outbound firewall policy incoming-interface is `wan1` | Set the `to-peer` policy `srcintf` to `internal1` |
 | No OSPF neighbor over the tunnel | Tunnel not up, or tunnel not added to OSPF as point-to-point on one side | Bring tunnel up; add point-to-point OSPF interface both sides |
 | FortiGate-to-FortiGate works, PC-to-PC fails; remote LAN routes `via wan1` | WAN OSPF preferred over the tunnel | Phase 5 cost change on both units (tunnel 10, wan1 100) |
-| PC reaches remote FortiGate but not the remote PC | Remote PC has no gateway or blocks ICMP | Set PC gateway to `10.P.1.4`, allow ICMP |
+| PC reaches remote FortiGate but not the remote PC | Remote PC has the wrong address/gateway or blocks ICMP | Set remote PC to `10.P.10.10/24`, gateway `10.P.10.4`, and allow ICMP |
 
 ## Notes
 
